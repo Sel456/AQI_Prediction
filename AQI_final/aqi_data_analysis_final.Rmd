@@ -1,0 +1,395 @@
+---
+title: "AQI data analysis"
+output: html_document
+date: "2023-08-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. sMarkdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(purrr)
+library(modelr)
+library(glmnet)
+library(earth)
+library(caret)
+library(kableExtra)
+```
+***Lets start by looking at the data and the variables***
+```{r}
+aqi = read.csv("CSV/Real_Combine.csv")
+
+```
+
+```{r}
+# renaming the variables to be more descriptive
+aqi_1 <- aqi %>% rename(
+  "Avg_temp" = "T", # 
+  "Max_temp" = "TM",
+  "Min_temp" = "Tm",
+  "atm_press_sea" = "SLP",
+  "Avg_humid" = "H",
+  "Avg_vis" = "VV",
+  "Avg_windspeed" = "V",
+  "Max_sus_windspeed" = "VM",
+  "AQI" = "PM.2.5"
+)
+sample_of_aqi <- head(aqi_1, 15)
+tab1 <- sample_of_aqi %>% kable(format = "html", caption = "First 15 rows of AQI Data") %>% kable_styling()
+tab1
+cat(tab1, file = "tab1.html")
+```
+
+
+```{r}
+# checking for NA values
+
+sum(is.na(aqi_1$Avg_temp))
+sum(is.na(aqi_1$Max_temp))
+sum(is.na(aqi_1$Min_temp))
+sum(is.na(aqi_1$atm_press_sea))
+sum(is.na(aqi_1$Avg_humid))
+sum(is.na(aqi_1$Avg_vis))
+sum(is.na(aqi_1$Avg_windspeed))
+sum(is.na(aqi_1$Max_sus_windspeed))
+sum(is.na(aqi_1$AQI))
+```
+
+
+```{r}
+# NA values: Here, to deal with my NA values I will remove them. The reason being they do not seem so significant as to effect my results much.
+
+#I will get rid of the na values using case wise deletion
+aqi_2 <- na.omit(aqi_1)
+
+```
+
+
+```{r}
+# looking at visualization of the data 
+plot_1 <- aqi_2 %>% ggplot() + geom_point(aes(x = Avg_temp, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = Max_temp, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = Min_temp, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = atm_press_sea, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = Avg_humid, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = Avg_vis, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = Avg_windspeed, y = AQI, alpha = .05))
+aqi_2 %>% ggplot() + geom_point(aes(x = Max_sus_windspeed, y = AQI, alpha = .05))
+# so i would use the best variables, that actual try to show some relationship with AQI in a linear fashion, to build my models and work my way to using the weaker ones. This mainly applies for multivariate models
+png("plot_1")
+```
+
+
+```{r}
+#sampling data into test and train
+set.seed(3)
+list = sample(c(0,1), 1088, replace = TRUE, prob = c(25,75))
+
+# now we add list to our table 
+aqi_2 <- aqi_2 %>% mutate(Index = list)
+head(aqi_2)
+
+# now we create train and test data sets
+train_aqi <- aqi_2 %>% filter(Index == 1)
+test_aqi <- aqi_2 %>% filter(Index == 0)
+
+head(train_aqi)
+head(test_aqi)
+```
+
+
+```{r}
+# Now we can start building multiple models from our variables using the train_aqi data set
+# single variable linear models 
+mae_vec = NA
+
+run_1 <- lm(AQI~Avg_temp, data = train_aqi)
+newtest_1 <- test_aqi %>% add_predictions(run_1, var = "pred") %>% add_residuals(run_1, var = "resid")
+mae_1 <- mean(abs(newtest_1$resid))
+mae_vec[1] = mae_1
+mae_vec
+
+# stores our predictions. In the plot we want it to be as close to our y = x line as possible.
+ggplot(newtest_1) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_1$AQI), max(newtest_1$AQI)) + xlim(min(newtest_1$pred), max(newtest_1$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+```
+
+
+```{r}
+run_2 <- lm(AQI~Max_temp, data = train_aqi)
+newtest_2 <- test_aqi %>% add_predictions(run_2, var = "pred_max_temp") %>% add_residuals(run_2, var = "resid_max_temp")
+mae_2 <- mean(abs(newtest_2$resid_max_temp))
+mae_vec[2] = mae_2
+mae_vec
+
+ggplot(newtest_2) + geom_point(aes(x = pred_max_temp, y = AQI)) + ylim(min(newtest_2$AQI), max(newtest_2$AQI)) + xlim(min(newtest_2$pred_max_temp), max(newtest_2$pred_max_temp)) + geom_abline(slope = 1, intercept = 0, color = "red")
+```
+
+
+```{r}
+mae_names = c()
+# rest of the single variable models
+run_3 <- lm(AQI~Min_temp, data = train_aqi)
+newtest_3 <- test_aqi %>% add_predictions(run_3, var = "pred_min_temp") %>% add_residuals(run_3, var = "resid_min_temp")
+mae_3 <- mean(abs(newtest_3$resid_min_temp))
+mae_vec[3] = mae_3
+
+ggplot(newtest_3) + geom_point(aes(x = pred_min_temp, y = AQI)) + ylim(min(newtest_3$AQI), max(newtest_3$AQI)) + xlim(min(newtest_3$pred_min_temp), max(newtest_3$pred_min_temp)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+
+run_4 <- lm(AQI~atm_press_sea, data = train_aqi)
+newtest_4 <- test_aqi %>% add_predictions(run_4, var = "pred_atm_press_sea") %>% add_residuals(run_4, var = "resid_atm_press_sea")
+mae_4 <- mean(abs(newtest_4$atm_press_sea))
+mae_vec[4] = mae_4
+
+ggplot(newtest_4) + geom_point(aes(x = pred_atm_press_sea, y = AQI)) + ylim(min(newtest_4$AQI), max(newtest_4$AQI)) + xlim(min(newtest_4$pred_atm_press_sea), max(newtest_4$pred_atm_press_sea)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+run_5 <- lm(AQI~Avg_humid, data = train_aqi)
+newtest_5 <- test_aqi %>% add_predictions(run_5, var = "pred_Avg_humid") %>% add_residuals(run_5, var = "resid_Avg_humid")
+mae_5 <- mean(abs(newtest_5$resid_Avg_humid))
+mae_vec[5] = mae_5
+
+ggplot(newtest_5) + geom_point(aes(x = pred_Avg_humid, y = AQI)) + ylim(min(newtest_5$AQI), max(newtest_5$AQI)) + xlim(min(newtest_5$pred_Avg_humid), max(newtest_5$pred_Avg_humid)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+run_6 <- lm(AQI~Avg_vis, data = train_aqi)
+newtest_6 <- test_aqi %>% add_predictions(run_6, var = "pred_Avg_vis") %>% add_residuals(run_6, var = "resid_Avg_vis")
+mae_6 <- mean(abs(newtest_6$resid_Avg_vis))
+mae_vec[6] = mae_6
+
+ggplot(newtest_6) + geom_point(aes(x = pred_Avg_vis, y = AQI)) + ylim(min(newtest_6$AQI), max(newtest_6$AQI)) + xlim(min(newtest_6$pred_Avg_vis), max(newtest_6$pred_Avg_vis)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+
+run_7 <- lm(AQI~Avg_windspeed, data = train_aqi)
+newtest_7 <- test_aqi %>% add_predictions(run_7, var = "pred_Avg_windspeed") %>% add_residuals(run_7, var = "resid_Avg_windspeed")
+mae_7 <- mean(abs(newtest_7$resid_Avg_windspeed))
+mae_vec[7] = mae_7
+
+ggplot(newtest_7) + geom_point(aes(x = pred_Avg_windspeed, y = AQI)) + ylim(min(newtest_7$AQI), max(newtest_7$AQI)) + xlim(min(newtest_7$pred_Avg_windspeed), max(newtest_7$pred_Avg_windspeed)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+run_8 <- lm(AQI~Max_sus_windspeed, data = train_aqi)
+newtest_8 <- test_aqi %>% add_predictions(run_8, var = "pred_Max_sus_windspeed") %>% add_residuals(run_8, var = "resid_Max_sus_windspeed")
+mae_8 <- mean(abs(newtest_8$resid_Max_sus_windspeed))
+mae_vec[8] = mae_8
+
+
+ggplot(newtest_8) + geom_point(aes(x = pred_Max_sus_windspeed, y = AQI)) + ylim(min(newtest_8$AQI), max(newtest_8$AQI)) + xlim(min(newtest_8$pred_Max_sus_windspeed), max(newtest_8$pred_Max_sus_windspeed)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+
+mae_vec
+```
+
+
+```{r}
+# Because of the mae of our past models we will build linear multivariate models from those previously created in order of the ones with the least MAE. We are doing this to see where the linear model starts to break down
+
+mae_A = NA
+run_A1 <- lm(AQI~Min_temp + Avg_vis, data = train_aqi) # 2 variables 
+newtest_A1 <- test_aqi %>% add_predictions(run_A1, var = "pred") %>% add_residuals(run_A1, var = "resid")
+mae_A1 <- mean(abs(newtest_A1$resid))
+mae_A[1] = mae_A1
+
+ggplot(newtest_A1) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_A1$AQI), max(newtest_A1$AQI)) + xlim(min(newtest_A1$pred), max(newtest_A1$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+run_A2 <- lm(AQI~Min_temp + Avg_vis + Avg_temp, data = train_aqi) # 3 variables 
+newtest_A2 <- test_aqi %>% add_predictions(run_A2, var = "pred") %>% add_residuals(run_A2, var = "resid")
+mae_A2 <- mean(abs(newtest_A2$resid))
+mae_A[2] = mae_A2
+
+ggplot(newtest_A2) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_A2$AQI), max(newtest_A2$AQI)) + xlim(min(newtest_A2$pred), max(newtest_A2$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+                                                                                                                                                                          
+
+run_A3 <- lm(AQI~Min_temp + Avg_vis + Avg_temp + Max_temp, data = train_aqi) # 4 variables 
+newtest_A3 <- test_aqi %>% add_predictions(run_A3, var = "pred") %>% add_residuals(run_A3, var = "resid")
+mae_A3 <- mean(abs(newtest_A3$resid))
+mae_A[3] = mae_A3
+
+ggplot(newtest_A3) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_A3$AQI), max(newtest_A3$AQI)) + xlim(min(newtest_A3$pred), max(newtest_A3$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+run_A4 <- lm(AQI~Min_temp + Avg_vis + Avg_temp + Max_temp + Avg_windspeed, data = train_aqi) # 4 variables 
+newtest_A4 <- test_aqi %>% add_predictions(run_A4, var = "pred") %>% add_residuals(run_A4, var = "resid")
+mae_A4 <- mean(abs(newtest_A4$resid))
+mae_A[4] = mae_A4
+
+ggplot(newtest_A4) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_A4$AQI), max(newtest_A4$AQI)) + xlim(min(newtest_A4$pred), max(newtest_A4$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+# seems like around here multiple variable linear models stopped being helpful so we continue with varying the degree
+
+mae_B = NA
+run_B1 <- lm(AQI~Min_temp + I(Avg_vis^2), data = train_aqi) # 2 variables 
+newtest_B1 <- test_aqi %>% add_predictions(run_B1, var = "pred") %>% add_residuals(run_B1, var = "resid")
+mae_B1 <- mean(abs(newtest_B1$resid))
+mae_B[1] = mae_B1
+
+ggplot(newtest_B1) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_B1$AQI), max(newtest_B1$AQI)) + xlim(min(newtest_B1$pred), max(newtest_B1$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+
+run_B2 <- lm(AQI~Min_temp + I(Avg_temp^2), data = train_aqi) # 2 variables
+newtest_B2 <- test_aqi %>% add_predictions(run_B2, var = "pred") %>% add_residuals(run_B2, var = "resid")
+mae_B2 <- mean(abs(newtest_B2$resid))
+mae_B[2] = mae_B2
+
+ggplot(newtest_B2) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_B2$AQI), max(newtest_B2$AQI)) + xlim(min(newtest_B2$pred), max(newtest_B2$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+
+run_B3 <- lm(AQI~Min_temp + I(Max_temp^2), data = train_aqi) # 2 variables
+newtest_B3 <- test_aqi %>% add_predictions(run_B3, var = "pred") %>% add_residuals(run_B3, var = "resid")
+mae_B3 <- mean(abs(newtest_B3$resid))
+mae_B[3] = mae_B3
+
+ggplot(newtest_B3) + geom_point(aes(x = pred, y = AQI)) + ylim(min(newtest_B3$AQI), max(newtest_B3$AQI)) + xlim(min(newtest_B3$pred), max(newtest_B3$pred)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+
+mae_vec
+mae_A
+mae_B # so we see that quadratics are not a good fit and so It would not be well thought to continue by varying degree. At this point our best model is run_A3. I would guess that quadratics and higher degree models don't work well due to over fitting.
+```
+
+
+```{r}
+# I will now try to use regularization to help avoid any potential overn fitting that may have occurred in run_A3
+# our predictors are ,Min_temp, Avg_vis, Avg_temp, Max_temp.
+# first we define our response and predictor variables 
+
+resp <- train_aqi$AQI
+
+pred <- data.matrix(train_aqi[, c("Min_temp", "Avg_vis", "Avg_temp", "Max_temp")])
+```
+
+
+```{r}
+# fitting the ridge/Lasso regression model using glmnet
+
+mod <- glmnet(pred, resp, alpha = 0)
+summary(mod)
+
+mod_1 <- glmnet(pred, resp, alpha = 1)
+summary(mod_1)
+```
+
+
+```{r}
+#Next we identify the optimal lambda or the penalty 
+cv_mod = cv.glmnet(pred, resp, alpha = 0)
+cv_mod_1 = cv.glmnet(pred, resp, alpha = 1)
+lambda <- cv_mod$lambda.min
+lambda_1 <- cv_mod_1$lambda.min
+```
+
+
+```{r}
+# now using the lambda we find the best model
+best <- glmnet(pred, resp, alpha = 0, lambda = lambda)
+coef(best)
+
+best_1 <- glmnet(pred, resp, alpha = 1, lambda = lambda_1)
+coef(best_1)
+```
+
+
+```{r}
+# now we find our <AE using our new model on our test data 
+test_pred <- data.matrix(test_aqi[, c("Min_temp", "Avg_vis", "Avg_temp", "Max_temp")])
+y_predicted_ridge <- predict(mod, s = lambda, newx = test_pred)
+
+
+ridge_vec = c()
+for(i in 1:282){
+  ridge_vec[i] = y_predicted_ridge[i,]
+} # to put predictions into vector form
+
+
+
+mae_ridge <- mean(abs(test_aqi$AQI - y_predicted_ridge))
+
+y_predicted_lasso <- predict(mod_1, s = lambda_1, newx = test_pred)
+
+lasso_vec = c()
+for(i in 1:282){
+  lasso_vec[i] = y_predicted_lasso[i,]
+}
+
+mae_lasso <- mean(abs(test_aqi$AQI - y_predicted_lasso))
+
+mae_l2_l1 <- c(mae_ridge, mae_lasso)
+# as we can see lasso performs a small margin better than the best multivariate model
+
+# plots for the regularization models.
+new_test_RL <- test_aqi %>% mutate("pred_ridge" = ridge_vec, "pred_lasso" = lasso_vec)
+new_test_RL %>% ggplot() + geom_point(aes(x = pred_ridge, y = AQI)) + geom_abline(slope = 1, intercept = 0, color = "red")
+new_test_RL %>% ggplot() + geom_point(aes(x = pred_lasso, y = AQI)) + geom_abline(slope = 1, intercept = 0, color = "red")
+
+mae_total = c(mae_vec, mae_A, mae_B, mae_l2_l1)
+mae_total # so lasso/l1 regression had the smallest error.
+```
+
+
+```{r}
+# now I will fit a spline model using MARS
+set.seed(112)
+# creating tuning grid 
+mars.grid <- floor(expand.grid(degree = 1:2, nprune = seq(5, 50, by = 5)))
+# creating and fitting model
+mars.aqi.mod <- train(x = train_aqi[, 1:8], y = train_aqi[, 9], method = "earth", metric = "RMSE",
+                      trControl = trainControl(method = "cv", number = 10), tuneGrid = mars.grid)
+pred_mars <- predict(mars.aqi.mod$finalModel, newdata = test_aqi)
+pred_mars_vec = NA
+for(i in 1:length(pred_mars)){
+  pred_mars_vec[i] = pred_mars[i]
+}
+# calculating mae and adding it to the mae total
+mae_mars_mae = mean(abs(pred_mars_vec - test_aqi$AQI))
+mae_total[18] = mae_mars_mae
+```
+
+
+```{r}
+# mars allowing for 4 degree interactions
+set.seed(113)
+# creating tuning grid 
+mars_1.grid <- floor(expand.grid(degree = 1:6, nprune = seq(5, 50, by = 5)))
+# creating and fitting model
+mars_1.aqi.mod <- train(x = train_aqi[, 1:8], y = train_aqi[, 9], method = "earth", metric = "RMSE",
+                      trControl = trainControl(method = "cv", number = 10), tuneGrid = mars_1.grid)
+pred_mars_1 <- predict(mars_1.aqi.mod$finalModel, newdata = test_aqi)
+pred_mars_vec_1 = NA
+for(i in 1:length(pred_mars)){
+  pred_mars_vec_1[i] = pred_mars_1[i]
+}
+# calculating mae and adding it to the mae total
+mae_mars_mae = mean(abs(pred_mars_vec_1 - test_aqi$AQI))
+mae_total[19] = mae_mars_mae
+```
+
+
+```{r}
+mae_names = c("Predicting AQI using Average Temeprature", "Predicting AQI from Max Temperature", "Predicting AQI from min Temperature", "Predicting AQI from Atmospheric Pressure at Sea level", "Predicting AQi from Average Humidity", "Predicting AQI from Average Visibility", "Predicting AQI from Average Windspeed", "Predicting AQI from Maximum Sustained Windspeed", "Predicting AQI from Minimum Temperature and Average Visibility", "Predicting AQI from Minimum Temperature, Average Visibility and Average Temperature", "Predicting AQI from Minimum Temperature, Average Visibility, Average Temperature and Maximum Temperature", "Predicting AQI from Minimum Temperature, Average Visibility, Average Temperature, Maximum Temperature, Average Windspeed", "Predicting AQI from Minimum Temperature, Average Visibility (squared)", "Predicting AQi from Minimum Temperature, Average Temperature (squared)", "Predicting AQI from Minimum Temperature, Maximum Temperature (squared)", "Ridge/L2 Regression", "Lasso/L1 Regression", "MARS(2 degree interactions)", "MARS(6 degree interactions)")
+
+MAE <- arrange(tibble("Regression variables" = mae_names, "MAE" = mae_total), mae_total)
+MAE_AQI_table <- kable(MAE) %>% kable_styling()
+cat(MAE_AQI_table, file = "MAE_AQI_tab.html")
+```
+
+
+```{r}
+```
+

@@ -1,0 +1,52 @@
+---
+title: "AQI data report"
+output:
+---
+```{r}
+library(knitr)
+library(tidyverse)
+library(htmltools)
+```
+
+INTRO:
+In this Data analysis, I sought to understand the Air Quality Index data from Delhi, from 2013 too 2018. More specifically, my main question or topic of exploration was to explore how well we could predict air quality index based off  our data.
+
+Understanding and trying to accurately predict AQI is very important. The main reason is that by being able to predict AQI we understand which factors are the most important for prediction because this can allow us to estimate AQI without having to take into account variables that do not provide much information. Measuring varaible that don't really help predictions would be considered a waste of resources as measuring them could prove very difficult. Also, this could help explain tourist population into new delhi because it stands to reason that tourists are more likely to visit places where the air is clean.The more greater the toruist the more the city benefits.Next, from this, it is not hard to see that air pollution could also effect citizens health causing an increase in diseases in the city.This would be something that health officials would be very interested to know to prevent the city from being devastated by a disease. This could be especially true for countries and cities without many resources. Even though I have attempted to provide insight into these topics, more analysis is still beneficial as other predictors or variables could provide more information, as will be explained later.
+
+DATA:
+Air Quality Index data set was web scraoped from tutiempo.com and weathermap.com and provided on kaggle by Aniruddha Pal.The data set had multiple Variables such as T, average temperature in Celsius, TM, Maximum Temperature in celsius, Tm, minimum temperature in celsius, SLP, atmospheric temperature at sea level which was measured in hectopascals, H, average relative humidity as a percent, VV, average visibility in Kilometers, V, average windspeed as Kilometers per hour, VM, maximum sustained windspeed in Kilometers per hour, and AQI, Average Quality Index.
+
+Now I will in depth explain the data. To begin, each observation or entry represents a day. Average Temperature represents tha average temperature that day for Delhi, while maximum and minimum would be the maximum and minimum temperatures for that day as well. Atmospheric pressure at sea level is simply the pressure from the atmosphere at sea level. Average relative humidity measures the amount of water vapor in the air as a percentage of the amount that is required for saturation at the temperature that the amount of water vapor is measured at. Average visibility is visibility of the air measured by the intensity of scattered light which is measured by sensors. Average windspeed is simply the averae speed of winds measured for the day. Maximum sustained windspeed is the highest average wind over a certain interval of time. AQI tells us how great the level of pollution is on a scale of 0 to 500 with 500 being maximum pollution.
+
+In total, This data set had 1090 observation. 2 contained NA values and were removed as a result of not being very effective on the results of our models. A small bit of the data is presented below. 
+```{r, echo = F}
+includeHTML("tab1.html")
+```
+
+In order to visualize the relationship between the variables and AQI, I created plots to examine to see what types of models would work best. for insane, I wanted to examine which would be fitted best by certain polynomial models. The models can be seen in the Exploratory data analysis.
+
+
+Results:
+From my exploratory data analysis we can see that some predictors had a vary apparent pattern with AQI and some did not. This effected which variables I used as predictors in certain models. First, I started by creating single varaible linear models for all columns that were not AQI. The purpose of this was to just show if and how single variable linear models were good predictors. after trying single variable, double variable models were fitted and from there it was apparent that the error had risen up. I decided form there to continue onto 3 variables however the error rose again and it seemed that adding variables seemed to increase the error much more. Therefore, I explored quadratic and cubic models and the error seemed to decrease. I continued onto more comoplicated modeling methods
+
+Next, I decided to try l1/l2 regularization and to measure the error from thos modeling methods. Ti briefly explain regularization, when there is multicolinerity among variables in the data, we can add a shrinkage penalty to the method of error calculation, for example mean squared error. This shrinkage penalty is (µ)*∑|ßⱼ|, where ßⱼ would be the coefficients of our variables,µ is our penalty which baisically gives a numeric way to set the importance of the shrinkage penalty  . This would be added to our mse calculation and the new mse would be  (1/n)∑(y-Y)² + (µ)∑|ßⱼ| where y is the predicted value, Y is the actual value and n is the amount of observations. This new mse would now be what we are trying to minimize therefore our new mse would help also minimize our coefficients. The method using the shrinkage penalty shown abov is lasso regression or  l1 regression. l2 or ridge regression we would use the shrinkage penalty (µ)∑(ßⱼ²). After applying this method, our mae did not change much from the mae presented by the multivariate models so this would simply meant that there was not much co linearity between our variables. 
+
+Last, I decided to use the MARS modeling method.To briefly explain, MARS stands for the multivariable adaptive regression splines. To put it into basic terms, it is the use of peicewise functions to build a model for the data. This proves very useful when the model looks to be fallowing multiple different patterns through out the data. The meaning of degree interactions is the maximum degree number any of the peicewise functions is allowed to have, that being quadratic(2) or cubic(3) or beyond. After, implementing this modeling technique I achieved the lowest error of all the models I had tried. I definitely though that this data would follow a peicewise function because, as said previously, this data set seemed to display multiple different patterns through out. The table displaying all my error measure(MAE) can be seen below.
+
+
+```{r, echo = F}
+includeHTML("MAE_AQI_tab.html")
+```
+
+For further exploration it may be beneficial to consider even more variables. Some example of these could be the number of factories in the city, as well as perhaps the population of the city which own cars, or even gas consumption of the city as a whole. All these ould prove very helpful predictors to help make the model more accurate in predicting AQI. 
+
+For future analysis, some better method to employ when model building would be the use of the covariation matrix. This would be helpful for better analysis of multicolinearity among variables. By looking at multicolinearity we can see if regularization is a method that when implemented will be helpful to the model and the matrix gives us more information and a better way to understand the data. Of course, regularization was helpful in our model, however the decrease in MAE was not as significant as hoped.
+
+
+
+
+
+
+
+
+
